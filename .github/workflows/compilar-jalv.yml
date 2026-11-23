@@ -1,4 +1,3 @@
-
 name: Compilar JALV para Windows
 
 on: [push, workflow_dispatch]
@@ -51,7 +50,7 @@ jobs:
         shell: pwsh
         run: |
           $core = Join-Path $env:GITHUB_WORKSPACE 'src\JALV.Core\JALV.Core.csproj'
-          msbuild "$core" /t:Rebuild /p:Configuration=Release '/p:Platform=Any CPU' /m:1 /verbosity:normal
+          msbuild "$core" /t:Rebuild /p:Configuration=Release /p:Platform=AnyCPU /m:1 /verbosity:normal
           if ($LASTEXITCODE -ne 0) { throw 'Error al compilar JALV.Core.' }
 
           $dll = Join-Path $env:GITHUB_WORKSPACE 'src\JALV.Core\bin\Release\JALV.Core.dll'
@@ -61,8 +60,7 @@ jobs:
       - name: Compilar JALV en Release x86
         shell: pwsh
         run: |
-          $app = Join-Path $env:GITHUB_WORKSPACE 'src\JALV\JALV.csproj'
-          msbuild "$app" /t:Build /p:Configuration=Release /p:Platform=x86 /m:1 /verbosity:normal
+          msbuild "$env:JALV_SOLUTION" /t:Build /p:Configuration=Release /p:Platform=x86 /m:1 /verbosity:normal
           if ($LASTEXITCODE -ne 0) { throw 'Error al compilar JALV.' }
           if (-not (Test-Path (Join-Path $env:JALV_OUTPUT 'JALV.exe'))) { throw 'No se ha generado JALV.exe.' }
 
