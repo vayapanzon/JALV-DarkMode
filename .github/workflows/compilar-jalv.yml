@@ -1,3 +1,71 @@
+name: Compilar JALV para Windows
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: JALV Release x86 (.NET Framework 4.0)
+    runs-on: windows-2022
+    permissions:
+      contents: read
+
+    steps:
+      - name: Obtener archivos del repositorio
+        uses: actions/checkout@v4
+
+      - name: Configurar MSBuild de Visual Studio
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Configurar NuGet
+        uses: NuGet/setup-nuget@v3
+
+      - name: Localizar solución y carpeta de salida
+        shell: pwsh
+        run: |
+          $solution = Join-Path $env:GITHUB_WORKSPACE 'src\JALV.sln'
+          $output = Join-Path $env:GITHUB_WORKSPACE 'src\JALV\bin\Release'
+          if (-not (Test-Path $solution)) { throw 'Falta el archivo src/JALV.sln. Comprueba la estructura del repositorio.' }
+          "JALV_SOLUTION=$solution" >> $env:GITHUB_ENV
+          "JALV_OUTPUT=$output" >> $env:GITHUB_ENV
+
+      - name: Instalar ensamblados de referencia de .NET Framework 4.0
+        shell: pwsh
+        run: |
+          $packages = Join-Path $env:RUNNER_TEMP 'net40-refs'
+          nuget install Microsoft.NETFramework.ReferenceAssemblies.net40 -Version 1.0.3 -OutputDirectory $packages -ExcludeVersion -NonInteractive
+          if ($LASTEXITCODE -ne 0) { throw 'Fallo la instalacion de los ensamblados de referencia.' }
+          $source = Join-Path $packages 'Microsoft.NETFramework.ReferenceAssemblies.net40\build\.NETFramework\v4.0'
+          if (-not (Test-Path (Join-Path $source 'mscorlib.dll'))) { throw "Faltan ensamblados de .NET 4.0 en $source" }
+          $destination = Join-Path ${env:ProgramFiles(x86)} 'Reference Assemblies\Microsoft\Framework\.NETFramework\v4.0'
+          New-Item -Path $destination -ItemType Directory -Force | Out-Null
+          Copy-Item -Path (Join-Path $source '*') -Destination $destination -Recurse -Force
+
+      - name: Restaurar paquetes NuGet del proyecto
+        shell: pwsh
+        run: |
+          nuget restore "$env:JALV_SOLUTION" -NonInteractive
+          if ($LASTEXITCODE -ne 0) { throw 'Fallo la restauracion de paquetes NuGet.' }
+
+      - name: Compilar primero JALV.Core
+        shell: pwsh
+        run: |
+          $core = Join-Path $env:GITHUB_WORKSPACE 'src\JALV.Core\JALV.Core.csproj'
+          msbuild "$core" /t:Rebuild /p:Configuration=Release /p:Platform=AnyCPU /m:1 /verbosity:normal
+          if ($LASTEXITCODE -ne 0) { throw 'Error al compilar JALV.Core.' }
+
+          $dll = Join-Path $env:GITHUB_WORKSPACE 'src\JALV.Core\bin\Release\JALV.Core.dll'
+          if (-not (Test-Path $dll)) { throw 'No se ha generado JALV.Core.dll.' }
+          Write-Host "Biblioteca compilada: $dll"
+
+      - name: Compilar JALV en Release x86
+        shell: pwsh
+        run: |
+          msbuild "$env:JALV_SOLUTION" /t:Build /p:Configuration=Release /p:Platform=x86 /m:1 /verbosity:normal
+          if ($LASTEXITCODE -ne 0) { throw 'Error al compilar JALV.' }
           if (-not (Test-Path (Join-Path $env:JALV_OUTPUT 'JALV.exe'))) { throw 'No se ha generado JALV.exe.' }
 
       - name: Probar arranque de JALV (smoke test)
