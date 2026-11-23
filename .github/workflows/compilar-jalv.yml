@@ -1,3 +1,4 @@
+
 name: Compilar JALV para Windows
 
 on: [push, workflow_dispatch]
@@ -24,7 +25,7 @@ jobs:
         run: |
           $solution = Join-Path $env:GITHUB_WORKSPACE 'src\JALV.sln'
           $output = Join-Path $env:GITHUB_WORKSPACE 'src\JALV\bin\Release'
-          if (-not (Test-Path $solution)) { throw "Falta el archivo src/JALV.sln. Comprueba que subiste el contenido de la carpeta, no la carpeta envolvente." }
+          if (-not (Test-Path $solution)) { throw 'Falta el archivo src/JALV.sln. Comprueba la estructura del repositorio.' }
           "JALV_SOLUTION=$solution" >> $env:GITHUB_ENV
           "JALV_OUTPUT=$output" >> $env:GITHUB_ENV
 
@@ -46,12 +47,24 @@ jobs:
           nuget restore "$env:JALV_SOLUTION" -NonInteractive
           if ($LASTEXITCODE -ne 0) { throw 'Fallo la restauracion de paquetes NuGet.' }
 
+      - name: Compilar primero JALV.Core
+        shell: pwsh
+        run: |
+          $core = Join-Path $env:GITHUB_WORKSPACE 'src\JALV.Core\JALV.Core.csproj'
+          msbuild "$core" /t:Rebuild /p:Configuration=Release '/p:Platform=Any CPU' /m:1 /verbosity:normal
+          if ($LASTEXITCODE -ne 0) { throw 'Error al compilar JALV.Core.' }
+
+          $dll = Join-Path $env:GITHUB_WORKSPACE 'src\JALV.Core\bin\Release\JALV.Core.dll'
+          if (-not (Test-Path $dll)) { throw 'No se ha generado JALV.Core.dll.' }
+          Write-Host "Biblioteca compilada: $dll"
+
       - name: Compilar JALV en Release x86
         shell: pwsh
         run: |
-          msbuild "$env:JALV_SOLUTION" /t:Rebuild /p:Configuration=Release /p:Platform=x86 /m /verbosity:minimal
-          if ($LASTEXITCODE -ne 0) { throw 'Error al compilar el proyecto. Revisa los logs del trabajo.' }
-          if (-not (Test-Path (Join-Path $env:JALV_OUTPUT 'JALV.exe'))) { throw 'MSBuild ha terminado, pero JALV.exe no se ha generado.' }
+          $app = Join-Path $env:GITHUB_WORKSPACE 'src\JALV\JALV.csproj'
+          msbuild "$app" /t:Build /p:Configuration=Release /p:Platform=x86 /m:1 /verbosity:normal
+          if ($LASTEXITCODE -ne 0) { throw 'Error al compilar JALV.' }
+          if (-not (Test-Path (Join-Path $env:JALV_OUTPUT 'JALV.exe'))) { throw 'No se ha generado JALV.exe.' }
 
       - name: Guardar ejecutable y dependencias para descargar
         uses: actions/upload-artifact@v4
@@ -60,4 +73,3 @@ jobs:
           path: ${{ env.JALV_OUTPUT }}/
           if-no-files-found: error
           retention-days: 7
-
